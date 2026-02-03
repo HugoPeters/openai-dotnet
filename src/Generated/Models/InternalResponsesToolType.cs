@@ -13,7 +13,7 @@ namespace OpenAI.Responses
         private readonly string _value;
         private const string FunctionValue = "function";
         private const string FileSearchValue = "file_search";
-        private const string WebSearchValue = "web_search_preview";
+        private const string WebSearchValue = "web_search";
         private const string ComputerValue = "computer_use_preview";
 
         public InternalResponsesToolType(string value)
