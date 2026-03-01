@@ -69,13 +69,14 @@ public partial class ResponseContentPart
         };
     }
 
-    public static ResponseContentPart CreateInputFilePart(string fileId, string filename, BinaryData fileBytes)
+    public static ResponseContentPart CreateInputFilePart(string fileId, string filename, BinaryData fileBytes, string fileUrl = null)
     {
         return new InternalResponsesInputFileContentPart()
         {
             FileId = fileId,
             Filename = filename,
             FileBytes = fileBytes,
+            FileUrl = fileUrl,
         };
     }
 

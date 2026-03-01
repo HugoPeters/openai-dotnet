@@ -23,5 +23,7 @@ namespace OpenAI.Responses
         public string FileId { get; set; }
 
         public string Filename { get; set; }
+
+        public string FileUrl { get; set; }
     }
 }

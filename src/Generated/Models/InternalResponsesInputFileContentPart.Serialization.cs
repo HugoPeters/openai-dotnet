@@ -38,6 +38,12 @@ namespace OpenAI.Responses
                 writer.WritePropertyName("filename"u8);
                 writer.WriteStringValue(Filename);
             }
+
+            if (Optional.IsDefined(FileUrl) && _additionalBinaryDataProperties?.ContainsKey("file_url") != true)
+            {
+                writer.WritePropertyName("file_url"u8);
+                writer.WriteStringValue(FileUrl);
+            }
             if (Optional.IsDefined(FileBytes) && _additionalBinaryDataProperties?.ContainsKey("file_data") != true)
             {
                 writer.WritePropertyName("file_data"u8);
