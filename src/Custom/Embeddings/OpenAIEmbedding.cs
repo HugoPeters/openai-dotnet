@@ -4,12 +4,8 @@ using System.Buffers.Binary;
 using System.Buffers.Text;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using System.Text.Json.Serialization.Metadata;
 
 namespace OpenAI.Embeddings;
-
 
 /// <summary>
 /// Represents an embedding vector returned by embedding endpoint.
@@ -66,7 +62,7 @@ public partial class OpenAIEmbedding
 
     // CUSTOM: Made private. This property does not add value in the context of a strongly-typed class.
     /// <summary> The object type, which is always "embedding". </summary>
-    private InternalEmbeddingObject Object { get; } = InternalEmbeddingObject.Embedding;
+    private string Object { get; } = "embedding";
 
     // CUSTOM: Added logic to handle additional custom properties.
     /// <summary> Initializes a new instance of <see cref="OpenAIEmbedding"/>. </summary>
@@ -77,7 +73,7 @@ public partial class OpenAIEmbedding
     /// </param>
     /// <param name="object"> The object type, which is always "embedding". </param>
     /// <param name="serializedAdditionalRawData"> Keeps track of any properties unknown to the library. </param>
-    internal OpenAIEmbedding(int index, BinaryData embeddingProperty, InternalEmbeddingObject @object, IDictionary<string, BinaryData> serializedAdditionalRawData)
+    internal OpenAIEmbedding(int index, BinaryData embeddingProperty, string @object, IDictionary<string, BinaryData> serializedAdditionalRawData)
     {
         Index = index;
         EmbeddingProperty = embeddingProperty;
@@ -111,50 +107,50 @@ public partial class OpenAIEmbedding
     // CUSTOM: Implemented custom logic to transform from BinaryData to ReadOnlyMemory<float>.
     private static ReadOnlyMemory<float> ConvertToVectorOfFloats(BinaryData binaryData)
     {
-        ReadOnlySpan<byte> span = binaryData.ToMemory().Span;
+        ReadOnlySpan<byte> base64 = binaryData.ToMemory().Span;
 
-        // Heuristically detect format: JSON starts with `[`, base64 with `"`
-        if (span.Length > 0 && span[0] == (byte)'[' || span[0] == (byte)'{')
+        // Remove quotes around base64 string.
+        if (base64.Length < 2 || base64[0] != (byte)'"' || base64[base64.Length - 1] != (byte)'"')
         {
-            var jsonArraySpan = span;
-
-            if (span[0] == '{')
-                jsonArraySpan = span.Slice(1, span.Length - 2);
-
-#pragma warning disable IL2026
-#pragma warning disable IL3050
-            return new ReadOnlyMemory<float>(
-                JsonSerializer.Deserialize<float[]>(jsonArraySpan, new JsonSerializerOptions() {  }) ?? throw new FormatException("Invalid float array JSON."));
-#pragma warning restore IL3050
-#pragma warning restore IL2026
+            ThrowInvalidData();
         }
-        else
-        {
-            return DecodeBase64FloatArray(span);
-        }
+        base64 = base64.Slice(1, base64.Length - 2);
 
-        static ReadOnlyMemory<float> DecodeBase64FloatArray(ReadOnlySpan<byte> base64)
+        // Decode base64 string to bytes.
+        byte[] bytes = null;
+        try
         {
-            if (base64.Length < 2 || base64[0] != (byte)'"' || base64[base64.Length - 1] != (byte)'"')
-                ThrowInvalidData();
-
-            base64 = base64.Slice(1, base64.Length - 2);
-            byte[] bytes = ArrayPool<byte>.Shared.Rent(Base64.GetMaxDecodedFromUtf8Length(base64.Length));
-            OperationStatus status = Base64.DecodeFromUtf8(base64, bytes.AsSpan(), out _, out int bytesWritten);
+            bytes = ArrayPool<byte>.Shared.Rent(Base64.GetMaxDecodedFromUtf8Length(base64.Length));
+            OperationStatus status = Base64.DecodeFromUtf8(base64, bytes.AsSpan(), out int bytesConsumed, out int bytesWritten);
             if (status != OperationStatus.Done || bytesWritten % sizeof(float) != 0)
+            {
                 ThrowInvalidData();
+            }
 
+            // Interpret bytes as floats
             float[] vector = new float[bytesWritten / sizeof(float)];
             bytes.AsSpan(0, bytesWritten).CopyTo(MemoryMarshal.AsBytes(vector.AsSpan()));
             if (!BitConverter.IsLittleEndian)
             {
                 Span<int> ints = MemoryMarshal.Cast<float, int>(vector.AsSpan());
+#if NET8_0_OR_GREATER
+                BinaryPrimitives.ReverseEndianness(ints, ints);
+#else
                 for (int i = 0; i < ints.Length; i++)
+                {
                     ints[i] = BinaryPrimitives.ReverseEndianness(ints[i]);
+                }
+#endif
             }
 
-            ArrayPool<byte>.Shared.Return(bytes);
             return new ReadOnlyMemory<float>(vector);
+        }
+        finally
+        {
+            if (bytes is not null)
+            {
+                ArrayPool<byte>.Shared.Return(bytes);
+            }
         }
 
         static void ThrowInvalidData() =>
